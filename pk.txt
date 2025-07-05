@@ -1,0 +1,5 @@
+# Add your private keys here, one per line
+# Private keys should be 64 hex characters (with or without 0x prefix)
+# Examples:
+# 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+# 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef

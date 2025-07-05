@@ -1,8 +1,8 @@
 {
   "wallets": [
     {
-      "name": "name",
-      "privatekey": "your_privte_key"
+      "name": "Wallet1",
+      "privatekey": "0x0000000000000000000000000000000000000000000000000000000000000000"
     }
   ]
 }

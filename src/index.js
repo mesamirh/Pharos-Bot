@@ -162,10 +162,20 @@ async function processBatch(privateKeys, proxies, batchIndex, startIndex) {
 
 // Process a single account
 async function processAccount(privateKey, proxy, walletIndex, threadId, globalWalletIndex) {
-  const wallet = createWallet(privateKey);
-  const address = getWalletAddress(wallet);
-
-  logger.info(`Wallet: ${address}`, { walletIndex });
+  let wallet;
+  let address;
+  
+  try {
+    // Validate and create wallet
+    wallet = createWallet(privateKey);
+    address = getWalletAddress(wallet);
+    
+    logger.info(`Wallet: ${address}`, { walletIndex });
+  } catch (error) {
+    logger.error(`Failed to create wallet: ${error.message}`, { walletIndex });
+    logger.error(`Private key validation failed. Please check your private key format.`, { walletIndex });
+    return;
+  }
 
   let allProxies = useProxy
     ? fs.readFileSync(path.join(process.cwd(), 'proxy.txt'), 'utf8')
