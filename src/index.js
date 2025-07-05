@@ -184,7 +184,7 @@ async function processAccount(privateKey, proxy, walletIndex, threadId, globalWa
       currentProxyIndex = (currentProxyIndex + 1) % allProxies.length;
       const newProxy = allProxies[currentProxyIndex];
 
-     如果是新的代理与旧的不同
+      // If new proxy is different from old one
       if (newProxy !== proxy) {
         logger.warn(`Rotating proxy due to error: ${error.message}. Switching to proxy: ${newProxy.substring(0, 15)}...`, { walletIndex });
 

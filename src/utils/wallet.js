@@ -6,14 +6,14 @@ const { loadConfig } = require('../config');
 
 // Load configuration
 const config = loadConfig();
-const RPC_URL = config.api.zenith.rpc_url;
+const RPC_URL = config.api.zenith?.rpc_url || "https://testnet.dplabs-internal.com";
 
 /**
  * Create a wallet instance from a private key
  */
 function createWallet(privateKey) {
   try {
-    const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
     return new ethers.Wallet(privateKey, provider);
   } catch (error) {
     throw new Error(`Failed to create wallet: ${error.message}`);
@@ -43,8 +43,8 @@ async function signMessage(wallet, message) {
  */
 async function getBalance(wallet) {
   try {
-    const balance = await wallet.getBalance();
-    return ethers.utils.formatEther(balance);
+    const balance = await wallet.provider.getBalance(wallet.address);
+    return ethers.formatEther(balance);
   } catch (error) {
     throw new Error(`Failed to get balance: ${error.message}`);
   }
@@ -55,7 +55,7 @@ async function getBalance(wallet) {
  */
 function toChecksumAddress(address) {
   try {
-    return ethers.utils.getAddress(address);
+    return ethers.getAddress(address);
   } catch (error) {
     throw new Error(`Invalid address format: ${address}`);
   }

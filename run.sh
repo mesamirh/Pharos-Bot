@@ -75,21 +75,22 @@ fi
 # Make script executable (for future runs)
 chmod +x "$0"
 
-# Install dependencies if node_modules doesn't exist
-if [ ! -d "node_modules" ]; then
-    echo ""
-    print_info "Installing dependencies..."
-    print_info "This may take a few minutes..."
-    
-    if npm install; then
+# Install dependencies (force install to ensure all dependencies are present)
+echo ""
+print_info "Installing/updating dependencies..."
+print_info "This may take a few minutes..."
+
+if npm install --force; then
+    print_success "Dependencies installed successfully!"
+else
+    print_warning "Normal install failed, trying alternative method..."
+    if npm ci; then
         print_success "Dependencies installed successfully!"
     else
         print_error "Failed to install dependencies!"
         read -p "Press Enter to exit..."
         exit 1
     fi
-else
-    print_info "Dependencies already installed."
 fi
 
 # Check for required files and create templates if missing
@@ -147,6 +148,8 @@ tasks:
 api:
   pharos:
     base_url: "https://api.pharosnetwork.xyz"
+  zenith:
+    rpc_url: "https://testnet.dplabs-internal.com"
 EOF
 fi
 
