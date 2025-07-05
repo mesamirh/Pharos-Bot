@@ -16,78 +16,35 @@ function sleep(ms) {
  * Parse proxy string into proxy configuration
  */
 function parseProxy(proxyString) {
+  if (!proxyString || typeof proxyString !== 'string') {
+    return null;
+  }
+
   try {
-    // Handle empty or undefined proxy
-    if (!proxyString) {
-      return null;
+    // Handle different proxy formats
+    // Format: protocol://username:password@host:port
+    // Format: protocol://host:port
+    // Format: host:port
+    
+    let url = proxyString.trim();
+    
+    // Add protocol if missing
+    if (!url.includes('://')) {
+      url = `http://${url}`;
     }
     
-    // Check if it's a SOCKS proxy
-    const isSocks = proxyString.toLowerCase().startsWith('socks');
+    const parsed = new URL(url);
     
-    // Format can be:
-    // 1. username:password@host:port
-    // 2. host:port
-    // 3. user-XXXXX_country-XX-session-XXXX:password@host:port (iproyal format)
-    
-    let formattedProxy = proxyString;
-    
-    // If it doesn't have protocol prefix, add http://
-    if (!proxyString.includes('://')) {
-      // Check if it already has username:password structure
-      if (!proxyString.includes('@')) {
-        // If contains a colon but no @, it might be host:port or username:password
-        if (proxyString.includes(':')) {
-          // Try to detect if it's username:password format or host:port
-          // iproyal format usually has user- prefix
-          if (proxyString.includes('user-')) {
-            // It's likely username:password format, split and format properly
-            const parts = proxyString.split(':');
-            if (parts.length >= 2) {
-              const username = parts[0];
-              // The rest might contain both password and host:port
-              const restParts = parts.slice(1).join(':').split('@');
-              
-              if (restParts.length >= 2) {
-                // Already in username:password@host:port format
-                formattedProxy = `http://${proxyString}`;
-              } else {
-                // Need to extract password and host:port
-                const lastSpaceIndex = proxyString.lastIndexOf(' ');
-                if (lastSpaceIndex !== -1) {
-                  const password = proxyString.substring(proxyString.indexOf(':') + 1, lastSpaceIndex);
-                  const hostPort = proxyString.substring(lastSpaceIndex + 1);
-                  formattedProxy = `http://${username}:${password}@${hostPort}`;
-                } else {
-                  // Can't correctly parse, use as is with http:// prefix
-                  formattedProxy = `http://${proxyString}`;
-                }
-              }
-            } else {
-              // Can't correctly parse, use as is with http:// prefix
-              formattedProxy = `http://${proxyString}`;
-            }
-          } else {
-            // Likely a simple host:port format
-            formattedProxy = `http://${proxyString}`;
-          }
-        } else {
-          // No colon, probably just a hostname
-          formattedProxy = `http://${proxyString}`;
-        }
-      } else {
-        // Already has @ symbol, just add http://
-        formattedProxy = `http://${proxyString}`;
-      }
-    }
-    
-    // Return parsed proxy
     return {
-      url: formattedProxy,
-      isSocks
+      protocol: parsed.protocol.replace(':', ''),
+      host: parsed.hostname,
+      port: parseInt(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80),
+      username: parsed.username || undefined,
+      password: parsed.password || undefined
     };
   } catch (error) {
-    throw new Error(`Failed to parse proxy: ${error.message}`);
+    console.error(`Failed to parse proxy: ${proxyString}`, error);
+    return null;
   }
 }
 
@@ -96,29 +53,39 @@ function parseProxy(proxyString) {
  */
 function createAxiosWithProxy(proxyString) {
   try {
-    const instance = axios.create();
+    const axios = require('axios');
+    const { HttpsProxyAgent } = require('https-proxy-agent');
+    const { HttpProxyAgent } = require('http-proxy-agent');
+    const { SocksProxyAgent } = require('socks-proxy-agent');
     
-    // Add proxy if available
-    if (proxyString) {
-      const proxy = parseProxy(proxyString);
-      
-      if (proxy) {
-        const agent = proxy.isSocks
-          ? new SocksProxyAgent(proxy.url)
-          : new HttpsProxyAgent(proxy.url);
-        
-        instance.defaults.httpsAgent = agent;
-        instance.defaults.httpAgent = agent;
-      }
+    const proxyConfig = parseProxy(proxyString);
+    if (!proxyConfig) {
+      return createAxiosWithoutProxy();
     }
     
-    // Add default headers and timeout
-    instance.defaults.timeout = 30000;
+    const proxyUrl = `${proxyConfig.protocol}://${proxyConfig.username && proxyConfig.password ? 
+      `${proxyConfig.username}:${proxyConfig.password}@` : ''}${proxyConfig.host}:${proxyConfig.port}`;
+    
+    let agent;
+    if (proxyConfig.protocol === 'https') {
+      agent = new HttpsProxyAgent(proxyUrl);
+    } else if (proxyConfig.protocol === 'socks5' || proxyConfig.protocol === 'socks') {
+      agent = new SocksProxyAgent(proxyUrl);
+    } else {
+      agent = new HttpProxyAgent(proxyUrl);
+    }
+    
+    const instance = axios.create({
+      httpAgent: agent,
+      httpsAgent: agent,
+      timeout: 30000
+    });
+
+    // Add default headers
     instance.defaults.headers.common['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
     
     // Add request interceptor for logging
     instance.interceptors.request.use(config => {
-      // Add timestamp to track request duration
       config.metadata = { startTime: new Date() };
       return config;
     });
@@ -126,13 +93,10 @@ function createAxiosWithProxy(proxyString) {
     // Add response interceptor for error handling
     instance.interceptors.response.use(
       response => {
-        // Calculate request duration
         const duration = new Date() - response.config.metadata.startTime;
-        // We could log this if needed
         return response;
       },
       error => {
-        // Extract useful information from the error
         const errorInfo = {
           url: error.config?.url || 'unknown url',
           method: error.config?.method || 'unknown method',
@@ -142,7 +106,6 @@ function createAxiosWithProxy(proxyString) {
           message: error.message
         };
         
-        // Enrich error object with more context
         error.proxyInfo = {
           isProxyError: isProxyError(error.message),
           errorDetails: errorInfo
@@ -154,7 +117,7 @@ function createAxiosWithProxy(proxyString) {
     
     return instance;
   } catch (error) {
-    throw new Error(`Failed to create axios instance: ${error.message}`);
+    throw new Error(`Failed to create axios instance with proxy: ${error.message}`);
   }
 }
 
@@ -163,15 +126,16 @@ function createAxiosWithProxy(proxyString) {
  */
 function createAxiosWithoutProxy() {
   try {
-    const instance = axios.create();
+    const axios = require('axios');
+    const instance = axios.create({
+      timeout: 30000
+    });
     
-    // Add default headers and timeout
-    instance.defaults.timeout = 30000;
+    // Add default headers
     instance.defaults.headers.common['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
     
     // Add request interceptor for logging
     instance.interceptors.request.use(config => {
-      // Add timestamp to track request duration
       config.metadata = { startTime: new Date() };
       return config;
     });
@@ -179,13 +143,10 @@ function createAxiosWithoutProxy() {
     // Add response interceptor for error handling
     instance.interceptors.response.use(
       response => {
-        // Calculate request duration
         const duration = new Date() - response.config.metadata.startTime;
-        // We could log this if needed
         return response;
       },
       error => {
-        // Extract useful information from the error
         const errorInfo = {
           url: error.config?.url || 'unknown url',
           method: error.config?.method || 'unknown method',
@@ -195,7 +156,6 @@ function createAxiosWithoutProxy() {
           message: error.message
         };
         
-        // Enrich error object with more context
         error.proxyInfo = {
           isProxyError: isProxyError(error.message),
           errorDetails: errorInfo
@@ -212,12 +172,14 @@ function createAxiosWithoutProxy() {
 }
 
 /**
- * Check if an error is related to proxy issues
+ * Check if error is proxy related
  */
-function isProxyError(errorMessage = '') {
-  if (!errorMessage) return false;
+function isProxyError(errorMessage) {
+  if (!errorMessage || typeof errorMessage !== 'string') {
+    return false;
+  }
   
-  const proxyErrorPatterns = [
+  const proxyErrorIndicators = [
     'ECONNRESET',
     'ETIMEDOUT', 
     'ECONNREFUSED',
@@ -241,53 +203,144 @@ function isProxyError(errorMessage = '') {
     'ENOTFOUND',
     'getaddrinfo ENOTFOUND',
     'connect ETIMEDOUT',
-    'socket timeout'
+    'socket timeout',
+    'proxy'
   ];
   
   const lowerCaseError = errorMessage.toLowerCase();
-  return proxyErrorPatterns.some(pattern => 
-    lowerCaseError.includes(pattern.toLowerCase())
+  return proxyErrorIndicators.some(indicator => 
+    lowerCaseError.includes(indicator.toLowerCase())
   );
 }
 
 /**
- * Retry a function with exponential backoff
+ * Retry function with exponential backoff
  */
-async function retry(fn, retryAttempts, retryDelay, logger, walletIndex) {
+async function retry(fn, maxAttempts = 3, delay = 1000, logger = console, walletIndex = '') {
   let lastError;
   
-  for (let attempt = 1; attempt <= retryAttempts; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error;
       
-      // Get error message
-      const errorMessage = error.message || '';
-      
-      // Check if it's眼见得是网络错误
-      const isProxyIssue = isProxyError(errorMessage);
-      
-      // Log with additional context if it's a proxy error
-      if (isProxyIssue) {
-        logger.warn(`Proxy error detected: ${error.message}. Attempt ${attempt}/${retryAttempts}`, { walletIndex });
+      if (attempt === maxAttempts) {
+        break;
       }
       
-      if (attempt < retryAttempts) {
-        // Calculate delay with exponential backoff and add some randomness
-        const jitter = Math.random() * 500; // Add up to 500ms of random jitter
-        const delay = retryDelay * Math.pow(1.5, attempt - 1) + jitter;
-        
-        logger.warn(`Attempt ${attempt}/${retryAttempts} failed. Retrying in ${Math.round(delay)}ms... Error: ${error.message}`, { walletIndex });
-        await sleep(delay);
-      } else {
-        // Last attempt failed
-        logger.error(`All ${retryAttempts} retry attempts failed. Last error: ${error.message}`, { walletIndex });
+      // Check if it's a proxy error for additional context
+      const isProxyIssue = isProxyError(error.message);
+      
+      if (isProxyIssue && logger.warn) {
+        logger.warn(`Proxy error detected: ${error.message}. Attempt ${attempt}/${maxAttempts}`, { walletIndex });
       }
+      
+      // Calculate delay with exponential backoff and add some randomness
+      const jitter = Math.random() * 500; // Add up to 500ms of random jitter
+      const waitTime = delay * Math.pow(1.5, attempt - 1) + jitter;
+      
+      if (logger && logger.warn) {
+        logger.warn(`Attempt ${attempt}/${maxAttempts} failed. Retrying in ${Math.round(waitTime)}ms... Error: ${error.message}`, { walletIndex });
+      }
+      
+      await sleep(waitTime);
     }
   }
   
+  // All attempts failed
+  if (logger && logger.error) {
+    logger.error(`All ${maxAttempts} retry attempts failed. Last error: ${lastError.message}`, { walletIndex });
+  }
+  
   throw lastError;
+}
+
+/**
+ * Generate random number between min and max (inclusive)
+ */
+function getRandomNumber(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/**
+ * Generate random amount in a given range
+ */
+function getRandomAmount(min, max, decimals = 4) {
+  const amount = Math.random() * (max - min) + min;
+  return parseFloat(amount.toFixed(decimals));
+}
+
+/**
+ * Mask sensitive information like addresses and keys
+ */
+function maskSensitiveData(data, type = 'address') {
+  if (!data || typeof data !== 'string') {
+    return 'Unknown';
+  }
+  
+  switch (type) {
+    case 'address':
+      return `${data.slice(0, 6)}${'*'.repeat(6)}${data.slice(-6)}`;
+    case 'privateKey':
+      return `${data.slice(0, 4)}${'*'.repeat(data.length - 8)}${data.slice(-4)}`;
+    case 'proxy':
+      return `${data.slice(0, 15)}...`;
+    default:
+      return data;
+  }
+}
+
+/**
+ * Format error message for logging
+ */
+function formatError(error) {
+  if (!error) return 'Unknown error';
+  
+  if (typeof error === 'string') {
+    return error;
+  }
+  
+  if (error.response && error.response.data) {
+    if (typeof error.response.data === 'string') {
+      return error.response.data;
+    }
+    if (error.response.data.message) {
+      return error.response.data.message;
+    }
+    if (error.response.data.msg) {
+      return error.response.data.msg;
+    }
+  }
+  
+  return error.message || 'Unknown error';
+}
+
+/**
+ * Validate Ethereum address
+ */
+function isValidAddress(address) {
+  if (!address || typeof address !== 'string') {
+    return false;
+  }
+  
+  // Check if it starts with 0x and has the right length
+  return /^0x[a-fA-F0-9]{40}$/.test(address);
+}
+
+/**
+ * Validate private key
+ */
+function isValidPrivateKey(privateKey) {
+  if (!privateKey || typeof privateKey !== 'string') {
+    return false;
+  }
+  
+  // Remove 0x prefix if present
+  const cleanKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+  
+  // Check if it's a 64 character hex string
+  return /^[a-fA-F0-9]{64}$/.test(cleanKey);
 }
 
 module.exports = {
@@ -296,5 +349,11 @@ module.exports = {
   createAxiosWithProxy,
   createAxiosWithoutProxy,
   isProxyError,
-  retry
+  retry,
+  getRandomNumber,
+  getRandomAmount,
+  maskSensitiveData,
+  formatError,
+  isValidAddress,
+  isValidPrivateKey
 };

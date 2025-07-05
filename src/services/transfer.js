@@ -28,7 +28,7 @@ class TransferService {
         
         // Check balance
         const balance = await this.wallet.getBalance();
-        const balanceInEther = ethers.utils.formatEther(balance);
+        const balanceInEther = ethers.formatEther(balance);
         
         if (parseFloat(balanceInEther) < parseFloat(amount) + 0.0005) { // Add gas fee buffer
           throw new Error(`Insufficient balance: ${balanceInEther} PHRS`);
@@ -37,7 +37,7 @@ class TransferService {
         // Create transaction
         const tx = {
           to: address,
-          value: ethers.utils.parseEther(amount.toString()),
+          value: ethers.parseEther(amount.toString()),
           gasLimit: 21000
         };
         
