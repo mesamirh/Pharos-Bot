@@ -34,21 +34,22 @@ if not exist "package.json" (
     exit /b 1
 )
 
-:: Install dependencies if node_modules doesn't exist
-if not exist "node_modules" (
-    echo.
-    echo [INFO] Installing dependencies...
-    echo This may take a few minutes...
-    npm install
+:: Install dependencies (force install to ensure all dependencies are present)
+echo.
+echo [INFO] Installing/updating dependencies...
+echo This may take a few minutes...
+npm install --force
+if errorlevel 1 (
+    echo [ERROR] Failed to install dependencies!
+    echo Trying alternative installation method...
+    npm ci
     if errorlevel 1 (
-        echo [ERROR] Failed to install dependencies!
+        echo [ERROR] All installation methods failed!
         pause
         exit /b 1
     )
-    echo [SUCCESS] Dependencies installed successfully!
-) else (
-    echo [INFO] Dependencies already installed.
 )
+echo [SUCCESS] Dependencies installed successfully!
 
 :: Check for required files and create templates if missing
 echo.
@@ -56,17 +57,24 @@ echo [INFO] Checking configuration files...
 
 if not exist "pk.txt" (
     echo Creating pk.txt template...
-    echo # Add your private keys here, one per line > pk.txt
-    echo # Example: >> pk.txt
-    echo # 0x1234567890abcdef... >> pk.txt
+    (
+        echo # Add your private keys here, one per line
+        echo # Private keys should be 64 hex characters ^(with or without 0x prefix^)
+        echo # Examples:
+        echo # 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        echo # 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+    ) > pk.txt
 )
 
 if not exist "proxy.txt" (
     echo Creating proxy.txt template...
-    echo # Add your proxies here, one per line > proxy.txt
-    echo # Format: protocol://username:password@host:port >> proxy.txt
-    echo # Example: http://user:pass@proxy.example.com:8080 >> proxy.txt
-    echo # Or simply: host:port >> proxy.txt
+    (
+        echo # Add your proxies here, one per line ^(OPTIONAL^)
+        echo # Format: protocol://username:password@host:port
+        echo # Example: http://user:pass@proxy.example.com:8080
+        echo # Or simply: host:port
+        echo # Leave empty if you don't want to use proxies
+    ) > proxy.txt
 )
 
 if not exist "config.yaml" (
@@ -101,6 +109,8 @@ if not exist "config.yaml" (
         echo api:
         echo   pharos:
         echo     base_url: "https://api.pharosnetwork.xyz"
+        echo   zenith:
+        echo     rpc_url: "https://testnet.dplabs-internal.com"
     ) > config.yaml
 )
 
@@ -112,7 +122,7 @@ if not exist "wallet.json" (
         echo   "wallets": [
         echo     {
         echo       "name": "Wallet1",
-        echo       "privatekey": "your_private_key_here"
+        echo       "privatekey": "0x0000000000000000000000000000000000000000000000000000000000000000"
         echo     }
         echo   ]
         echo }
@@ -137,16 +147,16 @@ echo [INFO] Launching Pharos Bot...
 echo [INFO] Press Ctrl+C to stop the bot
 echo.
 
-:: Choose which script to run
-if exist "src/index.js" (
+:: Choose which script to run - prioritize main.js
+if exist "main.js" (
+    node main.js
+) else if exist "src/index.js" (
     node src/index.js
 ) else if exist "index.js" (
     node index.js
-) else if exist "main.js" (
-    node main.js
 ) else (
     echo [ERROR] No main script found!
-    echo Looking for: src/index.js, index.js, or main.js
+    echo Looking for: main.js, src/index.js, or index.js
     pause
     exit /b 1
 )

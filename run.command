@@ -1,4 +1,9 @@
 #!/bin/bash
+# filepath: run.command
+
+# Get the directory where this script is located
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+cd "$DIR"
 
 # Set colors for output
 RED='\033[0;31m'
@@ -42,10 +47,7 @@ if ! command_exists node; then
     print_error "Node.js is not installed!"
     echo ""
     echo "Please install Node.js from: https://nodejs.org/"
-    echo "Or use a package manager:"
-    echo "  macOS: brew install node"
-    echo "  Ubuntu/Debian: sudo apt install nodejs npm"
-    echo "  CentOS/RHEL: sudo yum install nodejs npm"
+    echo "Or use Homebrew: brew install node"
     echo ""
     echo "After installation, run this script again."
     read -p "Press Enter to exit..."
